@@ -13,7 +13,7 @@ class GeliverAPI:
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=30.0)
+            self._client = httpx.AsyncClient(timeout=60.0)
         return self._client
 
     async def close(self):
@@ -24,9 +24,12 @@ class GeliverAPI:
     async def _request(self, method: str, path: str, **kwargs) -> dict:
         client = await self._get_client()
         url = f"{self.base_url}/{path}"
+        print(f"[API] {method} {url} params={kwargs.get('params')} body={kwargs.get('json')}")
         response = await client.request(method, url, headers=self.headers, **kwargs)
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        print(f"[API] RESPONSE {response.status_code}: {str(data)[:500]}")
+        return data
 
     async def _get(self, path: str, params: dict = None) -> dict:
         return await self._request("GET", path, params=params)
@@ -65,6 +68,9 @@ class GeliverAPI:
     async def get_addresses(self, page: int = 1, limit: int = 10) -> dict:
         return await self._get("addresses", params={"page": page, "limit": limit})
 
+    async def get_address(self, address_id: str) -> dict:
+        return await self._get(f"addresses/{address_id}")
+
     async def create_address(self, address_data: dict) -> dict:
         return await self._post("addresses", data=address_data)
 
@@ -76,8 +82,24 @@ class GeliverAPI:
     async def get_shipments(self, page: int = 1, limit: int = 10) -> dict:
         return await self._get("shipments", params={"page": page, "limit": limit})
 
+    async def get_shipment(self, shipment_id: str) -> dict:
+        return await self._get(f"shipments/{shipment_id}")
+
     async def create_shipment(self, shipment_data: dict) -> dict:
         return await self._post("shipments", data=shipment_data)
+
+    async def create_shipment_two_step(self, shipment_data: dict) -> dict:
+        return await self._post("shipments/two-step", data=shipment_data)
+
+    async def accept_offer(self, offer_id: str) -> dict:
+        return await self._post("transactions", data={"offerID": offer_id})
+
+    async def purchase_shipment(self, provider_service_code: str, shipment_data: dict) -> dict:
+        payload = {
+            "providerServiceCode": provider_service_code,
+            "shipment": shipment_data,
+        }
+        return await self._post("transactions", data=payload)
 
     async def cancel_shipment(self, shipment_id: str) -> dict:
         return await self._delete(f"shipments/{shipment_id}")

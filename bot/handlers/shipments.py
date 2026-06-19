@@ -7,8 +7,20 @@ from bot.keyboards import main_menu_keyboard
 
 # ── Gönderi Listesi ──
 
-PENDING_STATUSES = {"", None, "CREATED", "PROCESSING"}
-TRANSIT_STATUSES = {"TRANSIT", "PICKED_UP", "OUT_FOR_DELIVERY", "DELIVERY"}
+PENDING_STATUSES = {"", None, "CREATED", "PROCESSING", "PRE_TRANSIT"}
+TRANSIT_STATUSES = {"TRANSIT", "PICKED_UP", "OUT_FOR_DELIVERY"}
+
+STATUS_LABELS = {
+    "PRE_TRANSIT": "Sisteme Kaydedildi",
+    "TRANSIT": "Yolda",
+    "PICKED_UP": "Teslim Alındı",
+    "OUT_FOR_DELIVERY": "Dağıtımda",
+    "DELIVERED": "Teslim Edildi",
+    "FAILURE": "Hata",
+    "RETURNED": "İade Edildi",
+    "UNKNOWN": "Bilinmeyen",
+}
+PAGE_SIZE = 11
 
 
 @restricted
@@ -30,48 +42,81 @@ async def shipment_list(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
 
-    filter_mode = query.data.replace("ship_list_", "")
-
-    try:
-        result = await api.get_shipments(page=1, limit=50)
-    except Exception:
-        await query.edit_message_text("API bağlantı hatası.", reply_markup=main_menu_keyboard())
-        return
-
-    if not result.get("result"):
-        await query.edit_message_text("Gönderiler alınamadı.", reply_markup=main_menu_keyboard())
-        return
-
-    shipments = result.get("data", [])
-
-    if filter_mode == "pending":
-        filtered = [
-            s for s in shipments
-            if (s.get("trackingStatus") or {}).get("trackingStatusCode") in PENDING_STATUSES
-        ]
-        title = "📋 Henüz Gönderilmeyenler"
-    elif filter_mode == "transit":
-        filtered = [
-            s for s in shipments
-            if (s.get("trackingStatus") or {}).get("trackingStatusCode") in TRANSIT_STATUSES
-        ]
-        title = "📋 Yolda Olanlar"
+    raw = query.data.replace("ship_list_", "")
+    if "_" in raw:
+        parts = raw.rsplit("_", 1)
+        if parts[-1].isdigit():
+            filter_mode = parts[0]
+            page = int(parts[-1])
+        else:
+            filter_mode = raw
+            page = 1
     else:
-        filtered = shipments
-        title = "📋 Tüm Kargolar"
+        filter_mode = raw
+        page = 1
 
+    while True:
+        try:
+            result = await api.get_shipments(page=page, limit=PAGE_SIZE)
+        except Exception:
+            await query.edit_message_text("API bağlantı hatası.", reply_markup=main_menu_keyboard())
+            return
+
+        if not result.get("result"):
+            await query.edit_message_text("Gönderiler alınamadı.", reply_markup=main_menu_keyboard())
+            return
+
+        shipments = result.get("data", [])
+        has_more_pages = len(shipments) == PAGE_SIZE
+
+        if filter_mode == "pending":
+            filtered = [
+                s for s in shipments
+                if (s.get("trackingStatus") or {}).get("trackingStatusCode") in PENDING_STATUSES
+            ]
+            title = "📋 Henüz Gönderilmeyenler"
+        elif filter_mode == "transit":
+            filtered = [
+                s for s in shipments
+                if (s.get("trackingStatus") or {}).get("trackingStatusCode") in TRANSIT_STATUSES
+            ]
+            title = "📋 Yolda Olanlar"
+        else:
+            filtered = shipments
+            title = "📋 Tüm Kargolar"
+
+        if not filtered and has_more_pages:
+            page += 1
+            continue
+        break
+
+    has_more = len(filtered) == PAGE_SIZE
     buttons = []
     for s in filtered:
         barcode = s.get("barcode", "-")
-        status = s.get("trackingStatus", {}).get("statusDetails", "Bilinmiyor")
+        ts = s.get("trackingStatus") or {}
+        code = ts.get("trackingStatusCode", "")
+        status = STATUS_LABELS.get(code, ts.get("statusDetails", "Bilinmiyor"))
         label = f"📦 {barcode} | {status}"
         buttons.append([InlineKeyboardButton(label, callback_data=f"ship_view_{s['id']}")])
+
+    if has_more or page > 1:
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton("◀️ Önceki", callback_data=f"ship_list_{filter_mode}_{page - 1}"))
+        if has_more:
+            nav_buttons.append(InlineKeyboardButton("Sonraki ▶️", callback_data=f"ship_list_{filter_mode}_{page + 1}"))
+        buttons.append(nav_buttons)
 
     buttons.append([InlineKeyboardButton("🔙 Kategoriler", callback_data="menu_shipments")])
     buttons.append([InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")])
 
-    if not filtered:
+    if not filtered and page == 1:
         text = f"{title}\n\nBu kategoride gönderi bulunmuyor."
+    elif not filtered:
+        text = f"{title}\n\nBu sayfada gönderi bulunmuyor."
+    elif has_more or page > 1:
+        text = f"{title} (Sayfa {page}):"
     else:
         text = f"{title}:"
 
@@ -87,12 +132,15 @@ async def shipment_view(update: Update, context: CallbackContext):
     shipment_id = query.data.replace("ship_view_", "")
 
     try:
-        result = await api.get_shipments(page=1, limit=100)
+        result = await api.get_shipment(shipment_id)
     except Exception:
         await query.edit_message_text("API bağlantı hatası.", reply_markup=main_menu_keyboard())
         return
 
-    s = next((x for x in result.get("data", []) if x["id"] == shipment_id), None)
+    if not result.get("result"):
+        s = None
+    else:
+        s = result.get("data")
 
     if not s:
         await query.edit_message_text(
@@ -309,9 +357,9 @@ async def ship_weight(update: Update, context: CallbackContext):
 
     try:
         price_result = await api.get_prices(ship["length"], ship["width"], ship["height"], val)
-    except Exception:
+    except Exception as e:
         context.user_data.pop("state", None)
-        await update.message.reply_text("Fiyat sorgulama hatası.", reply_markup=main_menu_keyboard())
+        await update.message.reply_text(f"Fiyat sorgulama hatası: {e}", reply_markup=main_menu_keyboard())
         return
 
     if not price_result.get("result"):
@@ -334,21 +382,22 @@ async def ship_weight(update: Update, context: CallbackContext):
         transport = offer.get("transportType", "")
         total = offer.get("totalAmount", "0")
         currency = offer.get("currency", "TL")
+        service_code = offer.get("providerServiceCode", "")
         if provider not in by_provider:
             by_provider[provider] = {}
         if transport not in by_provider[provider]:
-            by_provider[provider][transport] = (total, currency, offer)
+            by_provider[provider][transport] = (total, currency, service_code)
 
     result = []
     for provider, types in by_provider.items():
         unique_prices = set(v[0] for v in types.values())
         if len(unique_prices) == 1:
-            total, currency, offer = list(types.values())[0]
+            total, currency, service_code = list(types.values())[0]
             transport_label = "Şehir İçi - Dışı" if len(types) > 1 else list(types.keys())[0]
-            result.append((float(total), total, currency, provider, transport_label, offer))
+            result.append((float(total), total, currency, provider, transport_label, service_code))
         else:
-            for transport, (total, currency, offer) in types.items():
-                result.append((float(total), total, currency, provider, transport, offer))
+            for transport, (total, currency, service_code) in types.items():
+                result.append((float(total), total, currency, provider, transport, service_code))
 
     result.sort(key=lambda x: x[0])
     context.user_data["_ship_offers"] = result
@@ -378,48 +427,65 @@ async def ship_offer_select(update: Update, context: CallbackContext):
         return
 
     offer_data = offers[idx]
-    offer = offer_data[5]
+    service_code = offer_data[5]
     ship = context.user_data.get("new_ship", {})
 
+    await query.edit_message_text("⏳ Gönderi satın alınıyor...")
+
     payload = {
-        "senderAddressId": ship["senderAddressId"],
-        "recipientAddressId": ship["recipientAddressId"],
-        "length": ship["length"],
-        "width": ship["width"],
-        "height": ship["height"],
-        "weight": ship["weight"],
-        "providerCode": offer["providerCode"],
-        "providerServiceCode": offer["providerServiceCode"],
+        "senderAddressID": ship["senderAddressId"],
+        "recipientAddressID": ship["recipientAddressId"],
+        "length": str(int(ship["length"])),
+        "width": str(int(ship["width"])),
+        "height": str(int(ship["height"])),
+        "distanceUnit": "cm",
+        "weight": str(int(ship["weight"])),
+        "massUnit": "kg",
+        "items": [{"title": "Urun", "quantity": 1}],
+        "productPaymentOnDelivery": False,
+        "order": {
+            "sourceCode": "API",
+            "sourceIdentifier": "telegram",
+            "orderNumber": f"TG-{update.effective_user.id}",
+            "totalAmount": int(float(offer_data[1])),
+            "totalAmountCurrency": offer_data[2],
+        },
     }
 
-    await query.edit_message_text("⏳ Gönderi oluşturuluyor...")
-
     try:
-        result = await api.create_shipment(payload)
-    except Exception:
-        await query.edit_message_text("Gönderi oluşturma hatası.", reply_markup=main_menu_keyboard())
+        result = await api.purchase_shipment(service_code, payload)
+    except Exception as e:
+        print(f"purchase_shipment ERROR: {e}")
+        await query.edit_message_text(f"Satın alma hatası: {e}", reply_markup=main_menu_keyboard())
         return
 
-    if result.get("result"):
-        data = result.get("data", {})
-        barcode = data.get("barcode", "-")
-        label_url = data.get("labelURL", "")
-
-        msg = (
-            f"✅ Gönderi Başarıyla Oluşturuldu!\n\n"
-            f"Barkod: {barcode}\n"
-            f"Firma: {offer['providerCode']}\n"
-            f"Tutar: {offer_data[1]} {offer_data[2]}\n"
-        )
-        buttons = [[InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")]]
-        if label_url:
-            buttons.insert(0, [InlineKeyboardButton("🏷 Etiketi Görüntüle", url=label_url)])
-
+    if not result.get("result"):
+        err = result.get("additionalMessage") or result.get("message") or str(result)
         await query.edit_message_text(
-            msg, reply_markup=InlineKeyboardMarkup(buttons),
+            f"❌ Satın alma başarısız: {err}", reply_markup=main_menu_keyboard(),
         )
-    else:
-        err = result.get("additionalMessage") or result.get("message") or "Bilinmeyen hata"
-        await query.edit_message_text(
-            f"❌ Gönderi oluşturulamadı: {err}", reply_markup=main_menu_keyboard(),
-        )
+        return
+
+    txn_data = result.get("data", {})
+    shipment = txn_data.get("shipment", {})
+    barcode = shipment.get("barcode") or "-"
+    label_url = shipment.get("labelURL", "")
+    tracking_url = shipment.get("trackingUrl", "")
+    tracking_no = shipment.get("trackingNumber") or "-"
+
+    msg = (
+        f"✅ Gönderi Başarıyla Oluşturuldu!\n\n"
+        f"Barkod: {barcode}\n"
+        f"Takip No: {tracking_no}\n"
+        f"Firma: {offer_data[3]}\n"
+        f"Tutar: {offer_data[1]} {offer_data[2]}\n"
+    )
+    buttons = [[InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")]]
+    if label_url:
+        buttons.insert(0, [InlineKeyboardButton("🏷 Etiketi Görüntüle", url=label_url)])
+    if tracking_url:
+        buttons.insert(0, [InlineKeyboardButton("🔍 Takip Et", url=tracking_url)])
+
+    await query.edit_message_text(
+        msg, reply_markup=InlineKeyboardMarkup(buttons),
+    )

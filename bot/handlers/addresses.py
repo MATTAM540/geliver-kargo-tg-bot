@@ -4,6 +4,7 @@ from bot.auth import restricted
 from bot.api_client import api
 from bot.keyboards import main_menu_keyboard
 
+PAGE_SIZE = 11
 
 # ── Liste ──
 
@@ -12,8 +13,14 @@ async def address_list(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
 
+    data = query.data
+    if data.startswith("addr_page_"):
+        page = int(data.replace("addr_page_", ""))
+    else:
+        page = 1
+
     try:
-        result = await api.get_addresses(page=1, limit=50)
+        result = await api.get_addresses(page=page, limit=PAGE_SIZE)
     except Exception:
         await query.edit_message_text("API bağlantı hatası.", reply_markup=main_menu_keyboard())
         return
@@ -23,6 +30,7 @@ async def address_list(update: Update, context: CallbackContext):
         return
 
     addresses = result.get("data", [])
+    has_more = len(addresses) == PAGE_SIZE
 
     buttons = []
     for addr in addresses:
@@ -34,11 +42,23 @@ async def address_list(update: Update, context: CallbackContext):
         label = f"{icon} {name[:25]} - {city}"
         buttons.append([InlineKeyboardButton(label, callback_data=f"addr_view_{addr['id']}")])
 
+    if has_more or page > 1:
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton("◀️ Önceki", callback_data=f"addr_page_{page - 1}"))
+        if has_more:
+            nav_buttons.append(InlineKeyboardButton("Sonraki ▶️", callback_data=f"addr_page_{page + 1}"))
+        buttons.append(nav_buttons)
+
     buttons.append([InlineKeyboardButton("➕ Yeni Adres Ekle", callback_data="addr_add_start")])
     buttons.append([InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")])
 
-    if not addresses:
+    if not addresses and page == 1:
         text = "Kayıtlı adres bulunmuyor.\n\nYeni adres eklemek için butona tıklayın."
+    elif not addresses:
+        text = f"📍 Adresleriniz (Sayfa {page}):\n\nBu sayfada adres bulunmuyor."
+    elif has_more or page > 1:
+        text = f"📍 Adresleriniz (Sayfa {page}):"
     else:
         text = "📍 Adresleriniz:"
 
@@ -54,12 +74,15 @@ async def address_view(update: Update, context: CallbackContext):
     address_id = query.data.replace("addr_view_", "")
 
     try:
-        result = await api.get_addresses(page=1, limit=100)
+        result = await api.get_address(address_id)
     except Exception:
         await query.edit_message_text("API bağlantı hatası.", reply_markup=main_menu_keyboard())
         return
 
-    addr = next((a for a in result.get("data", []) if a["id"] == address_id), None)
+    if not result.get("result"):
+        addr = None
+    else:
+        addr = result.get("data")
 
     if not addr:
         await query.edit_message_text(

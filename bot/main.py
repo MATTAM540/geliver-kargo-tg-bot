@@ -48,7 +48,7 @@ def main():
     app.add_handler(CallbackQueryHandler(price_start, pattern="^menu_price$"))
 
     # ── Adresler ──
-    app.add_handler(CallbackQueryHandler(address_list, pattern="^menu_addresses$"))
+    app.add_handler(CallbackQueryHandler(address_list, pattern="^(menu_addresses$|addr_page_)"))
     app.add_handler(CallbackQueryHandler(address_view, pattern="^addr_view_"))
     app.add_handler(CallbackQueryHandler(address_delete, pattern="^addr_del_"))
     app.add_handler(CallbackQueryHandler(address_add_start, pattern="^addr_add_start$"))
@@ -68,7 +68,7 @@ def main():
     app.add_handler(CallbackQueryHandler(ship_offer_select, pattern="^ship_offer_"))
 
     # ── İade ──
-    app.add_handler(CallbackQueryHandler(return_start, pattern="^menu_return$"))
+    app.add_handler(CallbackQueryHandler(return_start, pattern="^(menu_return$|return_page_)"))
     app.add_handler(CallbackQueryHandler(return_execute, pattern="^return_ship_"))
 
     # ── Webhook'lar ──
