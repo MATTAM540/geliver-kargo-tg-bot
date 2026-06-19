@@ -31,7 +31,7 @@ async def post_init(application: Application):
     ])
 
 
-async def shutdown():
+async def shutdown(application):
     await api.close()
 
 

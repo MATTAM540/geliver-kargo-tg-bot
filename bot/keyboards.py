@@ -28,13 +28,3 @@ def confirm_cancel_keyboard():
     ])
 
 
-def pagination_keyboard(current_page: int, total_pages: int, prefix: str):
-    buttons = []
-    if current_page > 1:
-        buttons.append(InlineKeyboardButton("◀️", callback_data=f"{prefix}_page_{current_page - 1}"))
-    if current_page < total_pages:
-        buttons.append(InlineKeyboardButton("▶️", callback_data=f"{prefix}_page_{current_page + 1}"))
-    row = []
-    if buttons:
-        row = buttons
-    return InlineKeyboardMarkup([row] if row else [])

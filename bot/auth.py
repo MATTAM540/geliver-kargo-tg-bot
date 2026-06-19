@@ -8,7 +8,7 @@ def restricted(func):
     @wraps(func)
     async def wrapper(update: Update, context: CallbackContext, *args, **kwargs):
         user_id = update.effective_user.id
-        if user_id not in ALLOWED_USER_IDS:
+        if ALLOWED_USER_IDS is not None and user_id not in ALLOWED_USER_IDS:
             if update.callback_query:
                 await update.callback_query.answer("Bu işlem için yetkiniz yok.", show_alert=True)
             elif update.message:

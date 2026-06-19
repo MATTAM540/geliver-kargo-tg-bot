@@ -25,6 +25,7 @@ class GeliverAPI:
         client = await self._get_client()
         url = f"{self.base_url}/{path}"
         response = await client.request(method, url, headers=self.headers, **kwargs)
+        response.raise_for_status()
         return response.json()
 
     async def _get(self, path: str, params: dict = None) -> dict:

@@ -45,10 +45,16 @@ async def shipment_list(update: Update, context: CallbackContext):
     shipments = result.get("data", [])
 
     if filter_mode == "pending":
-        filtered = [s for s in shipments if s.get("trackingStatus", {}).get("trackingStatusCode") in PENDING_STATUSES]
+        filtered = [
+            s for s in shipments
+            if (s.get("trackingStatus") or {}).get("trackingStatusCode") in PENDING_STATUSES
+        ]
         title = "📋 Henüz Gönderilmeyenler"
     elif filter_mode == "transit":
-        filtered = [s for s in shipments if s.get("trackingStatus", {}).get("trackingStatusCode") in TRANSIT_STATUSES]
+        filtered = [
+            s for s in shipments
+            if (s.get("trackingStatus") or {}).get("trackingStatusCode") in TRANSIT_STATUSES
+        ]
         title = "📋 Yolda Olanlar"
     else:
         filtered = shipments
@@ -179,6 +185,11 @@ async def ship_create_start(update: Update, context: CallbackContext):
         result = await api.get_addresses(page=1, limit=50)
     except Exception:
         await query.edit_message_text("Adres listesi alınamadı.", reply_markup=main_menu_keyboard())
+        return
+
+    if not result.get("result"):
+        err = result.get("additionalMessage") or result.get("message") or "Bilinmeyen hata"
+        await query.edit_message_text(f"Adres listesi alınamadı: {err}", reply_markup=main_menu_keyboard())
         return
 
     addresses = result.get("data", [])

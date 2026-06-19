@@ -26,3 +26,8 @@ async def menu_callback(update: Update, context: CallbackContext):
 async def error_handler(update: object, context: CallbackContext):
     error_text = f"Hata oluştu: {context.error}"
     print(error_text)
+    if update and hasattr(update, "effective_chat") and update.effective_chat:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Bir hata oluştu. Lütfen daha sonra tekrar deneyin.",
+        )
