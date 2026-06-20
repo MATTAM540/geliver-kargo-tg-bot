@@ -4,6 +4,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 def main_menu_keyboard():
     buttons = [
         [InlineKeyboardButton("📦 Fiyat Sorgula", callback_data="menu_price")],
+        [InlineKeyboardButton("💰 Bakiye Sorgula", callback_data="menu_balance")],
         [InlineKeyboardButton("📍 Adreslerim", callback_data="menu_addresses")],
         [InlineKeyboardButton("🚚 Kargo Gönder", callback_data="menu_ship")],
         [InlineKeyboardButton("📋 Kargolarım", callback_data="menu_shipments")],

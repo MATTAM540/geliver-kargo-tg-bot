@@ -40,6 +40,11 @@ class GeliverAPI:
     async def _delete(self, path: str) -> dict:
         return await self._request("DELETE", path)
 
+    # ── Bakiye Sorgulama ──
+
+    async def get_balance(self) -> dict:
+        return await self._get(f"organizations/{GELIVER_ORGANIZATION_ID}/balance")
+
     # ── Fiyat Sorgulama ──
 
     async def get_prices(

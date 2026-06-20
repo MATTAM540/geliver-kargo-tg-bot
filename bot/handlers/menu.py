@@ -1,6 +1,6 @@
 from telegram import Update
 from telegram.ext import CallbackContext
-from bot.keyboards import main_menu_keyboard
+from bot.keyboards import main_menu_keyboard, back_to_menu_button
 
 
 async def start(update: Update, context: CallbackContext):
@@ -21,6 +21,29 @@ async def menu_callback(update: Update, context: CallbackContext):
             "🚀 KargoBot Ana Menü\n\nYapmak istediğin işlemi seç:",
             reply_markup=main_menu_keyboard(),
         )
+
+
+async def balance_check(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        from bot.api_client import api
+        result = await api.get_balance()
+        data = result.get("data", "0")
+        debt = result.get("debt", "0")
+        text = (
+            f"💰 Bakiye Bilgisi\n\n"
+            f"Bakiye: {data} TL\n"
+            f"Borç: {debt} TL"
+        )
+    except Exception:
+        text = "Bakiye sorgulanırken bir hata oluştu."
+
+    await query.edit_message_text(
+        text,
+        reply_markup=back_to_menu_button(),
+    )
 
 
 async def error_handler(update: object, context: CallbackContext):

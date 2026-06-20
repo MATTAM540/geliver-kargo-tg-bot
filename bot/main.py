@@ -4,7 +4,7 @@ from telegram.ext import (
     MessageHandler, filters,
 )
 from bot.config import TELEGRAM_BOT_TOKEN
-from bot.handlers.menu import start, menu_callback, error_handler
+from bot.handlers.menu import start, menu_callback, balance_check, error_handler
 from bot.handlers.price import price_start
 from bot.handlers.addresses import (
     address_list, address_view, address_delete,
@@ -43,6 +43,9 @@ def main():
 
     # Ana Menü callback
     app.add_handler(CallbackQueryHandler(menu_callback, pattern="^menu_main$"))
+
+    # ── Bakiye Sorgulama ──
+    app.add_handler(CallbackQueryHandler(balance_check, pattern="^menu_balance$"))
 
     # ── Fiyat Sorgulama ──
     app.add_handler(CallbackQueryHandler(price_start, pattern="^menu_price$"))
